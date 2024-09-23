@@ -5,7 +5,7 @@ Quick front end to build pull requests from IODA ophthalmic database
 ![image](https://github.com/user-attachments/assets/017320ce-343f-4070-9a1d-8c4f945228fc)
 
 
-1. Select which diseases you want
+1. Select which diseases you want (you can type on the left box and autocomplete will try and kick in)
 2. Move them to window on right for easy visibility
 3. Select again which diseases from right pane (for some reason script wont work unless they are selected there as well
 4. Select which image modalities
