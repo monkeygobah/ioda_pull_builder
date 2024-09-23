@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disease Filter Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f7f7f7;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        label {
+            display: block;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        select, input[type="submit"] {
+            padding: 8px;
+            margin-top: 10px;
+            width: 50%;
+        }
+
+        input[type="submit"] {
+            background-color: #7052c1;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #0056b3;
+        }
+
+        #results {
+            margin-top: 30px;
+            background-color: #fff;
+            padding: 20px;
+            border: 1px solid #ccc;
+        }
+
+        .stats-section h3 {
+            margin-top: 20px;
+            color: #333;
+        }
+
+        .stats-section p {
+            margin-left: 20px;
+            color: #555;
+        }
+
+        .list-container {
+            display: flex;
+            justify-content: space-between;
+            width: 60%;
+            margin: 20px 0;
+        }
+
+        .list-box {
+            width: 45%;
+        }
+
+        .list-box select {
+            width: 100%;
+            height: 200px;
+        }
+
+        button {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>IODA Pull Request Generator</h1>
+
+    <!-- Form to filter diseases and imaging types -->
+    <form id="filterForm">
+        <div class="list-container">
+            <!-- Available Diseases -->
+            <div class="list-box">
+                <label for="available_diseases">Available Diseases:</label>
+                <select id="available_diseases" multiple="multiple"></select>
+                <button type="button" id="addDisease">Add Disease</button>
+            </div>
+
+            <!-- Selected Diseases -->
+            <div class="list-box">
+                <label for="selected_diseases">Selected Diseases:</label>
+                <select id="selected_diseases" name="diseases[]" multiple="multiple"></select>
+                <button type="button" id="removeDisease">Remove Disease</button>
+            </div>
+        </div>
+
+        <!-- Select Imaging Types -->
+        <label for="img_types">Select Imaging Types:</label>
+        <select id="img_types" name="img_types[]" multiple="multiple"></select>
+
+        <!-- Submit Button -->
+        <br><br>
+        <input type="submit" value="Filter">
+    </form>
+
+    <!-- Results Section -->
+    <div id="results"></div>
+
+    <!-- Include jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <script>
+        $(document).ready(function() {
+            // Fetch diseases for the available diseases dropdown
+            $.ajax({
+                url: '/autocomplete',
+                success: function(data) {
+                    data.forEach(function(disease) {
+                        $('#available_diseases').append(new Option(disease, disease));
+                    });
+                }
+            });
+
+            // Populate imaging types from backend
+            var imagingTypes = {{ imaging_types|tojson }};
+            imagingTypes.forEach(function(type) {
+                $('#img_types').append(new Option(type, type));
+            });
+
+            let session_id = null;
+
+            // Move selected diseases from available to selected list
+            $('#addDisease').click(function() {
+                $('#available_diseases option:selected').each(function() {
+                    $('#selected_diseases').append($(this).clone());
+                    $(this).remove();
+                });
+            });
+
+            // Remove diseases from the selected list back to the available list
+            $('#removeDisease').click(function() {
+                $('#selected_diseases option:selected').each(function() {
+                    $('#available_diseases').append($(this).clone());
+                    $(this).remove();
+                });
+            });
+
+            // Handle form submission and filtering
+            $('#filterForm').on('submit', function(e) {
+                e.preventDefault();
+                $('#results').html('Processing...');
+
+                $.ajax({
+                    url: '/filter',
+                    type: 'POST',
+                    data: $('#filterForm').serialize(),
+                    success: function(response) {
+                        session_id = response.session_id;
+
+                        // Display statistics
+                        let stats = response.stats;
+                        let statsHtml = `<h2>Statistics</h2>`;
+
+                        // Disease-specific stats
+                        for (let disease in stats) {
+                            if (disease !== 'all_diseases' && disease !== 'only_selected_diseases' && disease !== 'imaging_modality_stats') {
+                                statsHtml += `<div class="stats-section"><h3>${disease}</h3>`;
+                                statsHtml += `<p>Number of images: ${stats[disease].num_images}</p>`;
+                                statsHtml += `<p>Number of unique MRNs: ${stats[disease].num_unique_mrn}</p>`;
+                            }
+                        }
+
+                        // All diseases and only selected diseases stats
+                        statsHtml += `<div class="stats-section"><h3>All selected diseases (+ potential others)</h3>`;
+                        statsHtml += `<p>Number of images: ${stats.all_diseases.num_images}</p>`;
+                        statsHtml += `<p>Number of unique MRNs: ${stats.all_diseases.num_unique_mrn}</p>`;
+
+                        statsHtml += `<div class="stats-section"><h3>All selected diseases with no comorbidities</h3>`;
+                        statsHtml += `<p>Number of images: ${stats.only_selected_diseases.num_images}</p>`;
+                        statsHtml += `<p>Number of unique MRNs: ${stats.only_selected_diseases.num_unique_mrn}</p>`;
+
+                        // Imaging modality breakdown
+                        statsHtml += `<div class="stats-section"><h3>Imaging Modality Breakdown</h3>`;
+                        for (let disease in stats.imaging_modality_stats) {
+                            statsHtml += `<h4>${disease}</h4>`;
+                            for (let modality in stats.imaging_modality_stats[disease]) {
+                                statsHtml += `<p>${modality}: ${stats.imaging_modality_stats[disease][modality].toFixed(2)}%</p>`;
+                            }
+                        }
+                        statsHtml += `</div>`;
+
+                        // Add download button after displaying statistics
+                        statsHtml += `<br><button id="downloadCSV">Download Filtered CSV</button>`;
+
+                        $('#results').html(statsHtml);
+
+                        // Handle CSV download
+                        $('#downloadCSV').click(function() {
+                            if (!session_id) {
+                                $('#results').html('<p>Session expired. Please submit the form again.</p>');
+                                return;
+                            }
+
+                            $('#results').html('Preparing CSV for download...');
+
+                            $.ajax({
+                                url: '/download_filtered',
+                                type: 'POST',
+                                data: { session_id: session_id },
+                                xhrFields: {
+                                    responseType: 'blob'
+                                },
+                                success: function(response, status, xhr) {
+                                    var filename = "";
+                                    var disposition = xhr.getResponseHeader('Content-Disposition');
+                                    if (disposition && disposition.indexOf('attachment') !== -1) {
+                                        var filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                                        var matches = filenameRegex.exec(disposition);
+                                        if (matches != null && matches[1]) filename = matches[1].replace(/['"]/g, '');
+                                    }
+
+                                    var blob = new Blob([response], { type: 'application/zip' });
+                                    var link = document.createElement('a');
+                                    link.href = window.URL.createObjectURL(blob);
+                                    link.download = filename || 'filtered_images.zip';
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+
+                                    $('#results').html('Download started.');
+                                },
+                                error: function(xhr, status, error) {
+                                    if (xhr.status === 404) {
+                                        $('#results').html('<p>No records found for the selected criteria.</p>');
+                                    } else {
+                                        $('#results').html('<p>An error occurred.</p>');
+                                    }
+                                }
+                            });
+                        });
+                    },
+                    error: function(xhr, status, error) {
+                        if (xhr.status === 404) {
+                            $('#results').html('<p>No records found for the selected criteria.</p>');
+                        } else {
+                            $('#results').html('<p>An error occurred.</p>');
+                        }
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
