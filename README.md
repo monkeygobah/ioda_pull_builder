@@ -1,6 +1,5 @@
 # ioda_pull_builder
-Quick front end to build pull requests from IODA ophthalmic database
-
+Quick front end to build pull requests from UIC's AIO IODA dataset 
 ## Usage
 ![image](https://github.com/user-attachments/assets/017320ce-343f-4070-9a1d-8c4f945228fc)
 
